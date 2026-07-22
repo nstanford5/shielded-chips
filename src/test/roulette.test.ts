@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { setNetworkId } from '@midnight-ntwrk/midnight-js/network-id';
+import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import {
     deployContract,
     submitCallTx,
     type DeployedContract,
-} from '@midnight-ntwrk/midnight-js/contracts';
+} from '@midnight-ntwrk/midnight-js-contracts';
 import {
     type ContractAddress,
     decodeRawTokenType,
     encodeCoinPublicKey,
-} from '@midnight-ntwrk/compact-runtime';
+} from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import pino from 'pino';
 
 import { getConfig } from '../config.js';
