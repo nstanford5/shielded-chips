@@ -17,7 +17,7 @@
 //
 // Equal-denomination invariant:
 // - `betColor` and `houseDeposit` both require the incoming coin's color
-//   to equal `chipColor` (locked in at deploy time).
+//   to equal `allowedChipColor` (locked in at deploy time).
 // - `claimMatch` enforces `matchCoin.value == betCoin.value` from public
 //   ledger state, so the 2x math is mechanically guaranteed — no off-chain
 //   trust between Alice and the player needed.
@@ -33,7 +33,7 @@
 //   the hash `commitWithSk(num, sk)` is on chain before the reveal.
 // - PUBLIC: the dapp pseudonym (once a player acts), the bet color
 //   (`bets[pseudo]`), the bet value (`betCoins[pseudo].value`), the chip
-//   color (`chipColor`), the win/loss record (`winnerList`,
+//   color (`allowedChipColor`), the win/loss record (`winnerList`,
 //   `matchedWinners`), and every value in `houseCoins`. An observer can
 //   correlate all of a single player's behavior *within* this contract,
 //   and can read what was bet, for how much, and whether it won.
@@ -76,12 +76,12 @@ export ledger houseCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
 
 witness localSecretKey(): Bytes<32>;
 
-constructor(_winningNum: Uint<8>, _chipColor: Bytes<32>) {
+constructor(_winningNum: Uint<8>, allowedChipColor: Bytes<32>) {
     assert(_winningNum >= 0 && _winningNum <= 36, "Cheat Detected: theHouse: Please keep the number on the table");
 
     const _sk = localSecretKey();
     theHouse = disclose(getDappPublicKey(_sk));
-    chipColor = disclose(_chipColor);
+    chipColor = disclose(allowedChipColor);
     winningNumHash = commitWithSk(_winningNum as Bytes<32>, _sk);
     betState = BetState.OPEN;
 }

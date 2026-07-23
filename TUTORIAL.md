@@ -9,10 +9,10 @@ heart of this example:
 2. **`roulette.compact`** — a RED/BLACK betting game that takes chip coins as
    bets and pays winners 2×.
 
-Everything else in the repo is already provided. The tutorial focuses hard on
+Everything else in the repo is already provided. The tutorial focuses on
 the **shielded-token operations** (minting, sending, receiving, and custodying
 coins) and stays deliberately brief on the parts that aren't token-specific
-(enum plumbing, the roulette-wheel colour table, identity hashing).
+(enum plumbing, the roulette-wheel color table, identity hashing).
 
 ---
 
@@ -49,7 +49,7 @@ The mental model for the two contracts:
   chips.compact                          roulette.compact
   ─────────────                          ────────────────
   house mints a shielded token   ──────► players bet chip COINS
-  colour derived from            tokenColor      (custodied by the contract)
+  color derived from            tokenColor      (custodied by the contract)
   (contract addr + domain sep)   ──────► winners get 2× back via sendShielded
 ```
 
@@ -61,9 +61,12 @@ makes the shielded-token plumbing the interesting part.
 
 ## Part 1 — `chips.compact`: minting a shielded token
 
-Create `contract/chips.compact`. We build it top to bottom.
+Create the chips contract from the repo root:
+```bash
+touch contract/chips.compact
+```
 
-### 1.1 Header and ledger state *(brief — not token-specific)*
+### 1.1 Header and ledger state
 
 ```compact
 pragma language_version 0.23;
@@ -81,8 +84,8 @@ witness localSecretKey(): Bytes<32>;
 
 Only two of these fields are about tokens, and they matter a lot later:
 
-- **`tokenColor`** — the 32-byte *colour* (a.k.a. token type) of the chip. Every
-  shielded coin carries a `color` field, and a coin's colour is derived
+- **`tokenColor`** — the 32-byte *color* (a.k.a. token type) of the chip. Every
+  shielded coin carries a `color` field, and a coin's color is derived
   deterministically from **the minting contract's address + a domain
   separator**. We record it here on the first mint so *other* contracts (the
   roulette game) can read it off the public ledger and bind to it.
@@ -141,7 +144,7 @@ export circuit mint(recipient: ZswapCoinPublicKey, amount: Uint<64>): ShieldedSe
         right<ZswapCoinPublicKey, ContractAddress>(kernel.self())
     );
 
-    // Remember the colour on first mint.
+    // Remember the color on first mint.
     if (tokenColor == default<Bytes<32>>) {
         tokenColor = disclose(coin.color);
     }
@@ -186,7 +189,7 @@ increasing index, and it deterministically produces the next nonce. Here we bump
 the *next* mint continues the chain. The result, `mintNonce`, is this coin's
 identity.
 
-#### (b) `mintShieldedToken` — creating the coin, colour, and the "mint to self" pattern
+#### (b) `mintShieldedToken` — creating the coin, color, and the "mint to self" pattern
 
 ```compact
 const domain = pad(32, "roulette:chip:");
@@ -211,10 +214,10 @@ mintShieldedToken(
 
 Four things to internalise here:
 
-1. **The domain separator determines the colour.** A shielded coin's `color` is
+1. **The domain separator determines the color.** A shielded coin's `color` is
    derived from `(domainSep, this contract's address)`. Because both halves are
    fixed for a given deployment, *every* chip this contract mints — regardless
-   of amount or recipient — shares the same colour. That's what makes "chips" a
+   of amount or recipient — shares the same color. That's what makes "chips" a
    single fungible token type. Change the domain string and you'd be minting a
    different token.
 
@@ -241,7 +244,7 @@ Four things to internalise here:
 4. **The value is private.** `amount` is disclosed *to the mint operation* (the
    circuit needs it to build the coin), but it is **not** written to any public
    ledger field. It lives inside the coin's zswap UTXO. On-chain observers see
-   that a mint happened and the coin's colour, but **not how many chips** were
+   that a mint happened and the coin's color, but **not how many chips** were
    minted to whom.
 
 The returned `coin: ShieldedCoinInfo` has exactly three fields:
@@ -250,7 +253,7 @@ The returned `coin: ShieldedCoinInfo` has exactly three fields:
 ShieldedCoinInfo = { nonce: Bytes<32>, color: Bytes<32>, value: Uint<128> }
 ```
 
-#### (c) Recording the colour on first mint
+#### (c) Recording the color on first mint
 
 ```compact
 if (tokenColor == default<Bytes<32>>) {
@@ -259,8 +262,8 @@ if (tokenColor == default<Bytes<32>>) {
 ```
 
 The first time we mint, `tokenColor` is still its zero default, so we stash
-`coin.color`. This publishes the chip colour to the ledger so the roulette
-contract can look it up and enforce "bets must be paid in chips." The colour is
+`coin.color`. This publishes the chip color to the ledger so the roulette
+contract can look it up and enforce "bets must be paid in chips." The color is
 *not* secret — publishing it is intentional and safe.
 
 #### (d) `sendShielded` — paying the coin out, and change
@@ -385,25 +388,25 @@ Storing `QualifiedShieldedCoinInfo` *in ledger state* is how a contract keeps
 custody of a coin between transactions: it received the coin earlier, and it
 remembers the qualified handle so it can `sendShielded` that exact coin later.
 
-`chipColor` is `sealed` and bound at deploy time — this is the colour the game
+`chipColor` is `sealed` and bound at deploy time — this is the color the game
 will accept, read straight from the chips contract's `tokenColor`.
 
-### 2.2 Constructor: bind the chip colour, commit the winning number *(brief)*
+### 2.2 Constructor: bind the chip color, commit the winning number *(brief)*
 
 ```compact
-constructor(_winningNum: Uint<8>, _chipColor: Bytes<32>) {
+constructor(_winningNum: Uint<8>, allowedChipColor: Bytes<32>) {
     assert(_winningNum >= 0 && _winningNum <= 36, "Cheat Detected: theHouse: Please keep the number on the table");
     const _sk = localSecretKey();
     theHouse = disclose(getDappPublicKey(_sk));
-    chipColor = disclose(_chipColor);
+    chipColor = disclose(allowedChipColor);
     winningNumHash = commitWithSk(_winningNum as Bytes<32>, _sk);
     betState = BetState.OPEN;
 }
 ```
 
-The one token-relevant line is `chipColor = disclose(_chipColor)`: the deployer
-passes in the chips contract's published colour, and from now on the game only
-accepts coins of that colour. The winning number is stored as a *commitment*
+The one token-relevant line is `chipColor = disclose(allowedChipColor)`: the deployer
+passes in the chips contract's published color, and from now on the game only
+accepts coins of that color. The winning number is stored as a *commitment*
 (`commitWithSk` hashes it with the house secret) and revealed later — standard
 commit/reveal, not token-specific.
 
@@ -488,11 +491,11 @@ differences are the guards and bookkeeping (brief):
 - keyed by the player's pseudonym `pubPlayer` instead of the coin nonce, so a
   player can bet at most once per round;
 - the same `coin.color == chipColor` check;
-- the chosen colour is recorded publicly in `bets`.
+- the chosen color is recorded publicly in `bets`.
 
 Privacy note *(not token-specific but worth stating once)*: the player's
 *wallet* identity stays private — only the pseudonym `pubPlayer` and the bet
-colour become public. The bet *value*, however, is `betCoins[pubPlayer].value`
+color become public. The bet *value*, however, is `betCoins[pubPlayer].value`
 and **is** publicly readable. This example is deliberately "identity-private,
 behaviour-public."
 
@@ -511,7 +514,7 @@ export circuit revealWinningNumber(winningNum: Uint<8>): [] {
 
 No tokens move. The house re-hashes the number and checks it against the
 commitment made at deploy time (so it can't change the outcome after seeing the
-bets), closes betting, and publishes the winning colour.
+bets), closes betting, and publishes the winning color.
 
 ### 2.6 Paying a winner: two `sendShielded` calls, and why it's split *(detailed)*
 
@@ -576,7 +579,8 @@ Here's what's shielded-token-important:
   `ZswapCoinPublicKey`, i.e. the real wallet calling the circuit. This is a
   subtle privacy point: the player's on-chain *pseudonym* is unlinkable to their
   wallet, but a payout must land in an actual wallet key, so the coin does go to
-  a concrete `ZswapCoinPublicKey`.
+  a concrete `ZswapCoinPublicKey`. `ownPublicKey()` is safe to use here, because
+  the caller has already been authenticated.
 
 - **The value equality is enforced *in-circuit*.** Phase 2 asserts
   `matchCoin.value == betCoin.value` by reading both values from public ledger
@@ -641,7 +645,7 @@ circuit commitWithSk(_winningNum: Bytes<32>, _sk: Bytes<32>): Bytes<32> {
 }
 ```
 
-Pure helper circuits: the standard single-zero roulette colour table, the shared
+Pure helper circuits: the standard single-zero roulette color table, the shared
 pseudonym derivation (identical to the chips contract), and the winning-number
 commitment. Copy `getOdd` in full from the reference source — it's just the list
 of RED pockets `1,3,5,…,35`.
@@ -650,58 +654,28 @@ of RED pockets `1,3,5,…,35`.
 
 ## Part 3 — Compile
 
-With both `.compact` files written, generate the `managed/` artifacts:
+With both `.compact` files written, generate the compiled artifacts:
 
 ```bash
 yarn compile
 ```
 
-This runs, per `package.json`:
-
+Successful output:
 ```
-compact compile contract/roulette.compact contract/managed/roulette
-compact compile contract/chips.compact   contract/managed/chips
-```
-
-For each contract it produces `contract/managed/<name>/`:
-
-- `contract/index.d.ts` + `index.js` — the TypeScript API: a `Contract` class,
-  a `ledger()` reader, and typed `Circuits`. This is what the scaffolding
-  imports.
-- `keys/` — the PLONK proving/verifying keys (one pair per circuit, e.g.
-  `mint.prover` / `mint.verifier`).
-- `zkir/` — the compiled zero-knowledge intermediate representation.
-
-The pre-written `contract/index.ts` picks these up and turns them into
-deployable contracts:
-
-```ts
-export const CompiledChipsContract = CompiledContract.make(
-    'ChipsContract', ChipsContractClass,
-).pipe(
-    CompiledContract.withWitnesses(chipsWitnesses),
-    CompiledContract.withCompiledFileAssets(chipsZkConfigPath),
-);
+Compiling 7 circuits:
+  circuit "betColor" (k=15, rows=16583)  
+  circuit "claimMatch" (k=15, rows=16762)  
+  circuit "claimMyBet" (k=15, rows=16481)  
+  circuit "houseClaimBet" (k=15, rows=16770)  
+  circuit "houseClaimMatch" (k=15, rows=16756)  
+  circuit "houseDeposit" (k=15, rows=16532)  
+  circuit "revealWinningNumber" (k=14, rows=8542)  
+Overall progress [====================] 7/7                                                                                       
+Compiling 1 circuits:
+  circuit "mint" (k=15, rows=26944)  
 ```
 
-and `contract/witnesses.ts` supplies the one witness both contracts declared —
-`localSecretKey`, returning the caller's 32-byte secret from private state:
-
-```ts
-export const chipsWitnesses = {
-    localSecretKey: ({ privateState }) => [privateState, privateState.sk],
-};
-```
-
-If your `.compact` matches this tutorial, the generated `mint` circuit's TS
-signature will look like:
-
-```ts
-mint(context, recipient_0: { bytes: Uint8Array }, amount_0: bigint):
-    CircuitResults<PS, { change: { is_some: boolean, value: {...} }, sent: {...} }>;
-```
-
-— i.e. the `ShieldedSendResult` you returned, mapped into TypeScript.
+The compile script will compile both the chips and the roulette contracts.
 
 ---
 
@@ -709,17 +683,88 @@ mint(context, recipient_0: { bytes: Uint8Array }, amount_0: bigint):
 
 The end-to-end test in `src/test/roulette.test.ts` plays a full round against a
 local devnet: Alice (the house) deploys chips, mints to Alice/Bob/Claire,
-deploys roulette bound to the chip colour, deposits two match coins, Bob bets
+deploys roulette bound to the chip color, deposits two match coins, Bob bets
 RED (wins) and Claire bets BLACK (loses), Alice reveals RED, Bob claims 2× in
 two phases, and Alice sweeps the leftovers.
 
+Be sure that the Docker engine is running and start the local devnet:
 ```bash
-yarn validate        # brings up the devnet, runs the test, tears it down
+yarn env:up
+```
+
+Run the test script:
+```bash
+yarn test:local
 ```
 
 Watch the log lines like *"Bob chip balance after claimMatch: 200"* — that `100
 → 200` is the private chip value moving through the `sendShielded` calls you
 wrote in Part 2, and never appearing on the public ledger.
+
+Successful output looks like this:
+```
+[11:25:30.951] INFO (36852): Wallet sync [27]: shielded=true, unshielded=true, dust=true
+[11:25:30.951] INFO (36852): Wallet sync complete after 27 emissions
+[11:25:30.954] INFO (36852): All providers initialized.
+[11:25:30.955] INFO (36852): Deploying chips contract...
+[11:25:50.895] INFO (36852): Chips contract deployed at bf4b22efc6063e01a96869cfc7267ffb2ab48af6f848eb8cf7043cb96d88abed
+[11:25:50.986] INFO (36852): Alice minting 100 chips to herself (coin #1)...
+[11:26:14.938] INFO (36852): Alice minting 100 chips to herself (coin #2)...
+[11:26:39.011] INFO (36852): Alice minting 100 chips to Bob...
+[11:27:03.102] INFO (36852): Alice minting 100 chips to Claire...
+[11:27:25.863] INFO (36852): Chip token color: d0fc7faf7f9efa7453f0487c63ee20a34fdd9360ce06cf4a050bc176a8993891
+[11:27:25.863] INFO (36852): Syncing wallet...
+[11:27:25.865] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:27:25.865] INFO (36852): Wallet sync complete after 1 emissions
+[11:27:25.866] INFO (36852): Syncing wallet...
+[11:27:25.868] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:27:25.868] INFO (36852): Wallet sync complete after 1 emissions
+[11:27:25.868] INFO (36852): Syncing wallet...
+[11:27:25.870] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:27:25.870] INFO (36852): Wallet sync complete after 1 emissions
+[11:27:25.879] INFO (36852): Deploying roulette contract bound to chip color d0fc7faf7f9efa7453f0487c63ee20a34fdd9360ce06cf4a050bc176a8993891...
+[11:27:44.648] INFO (36852): Roulette deployed at d1b84317e3fbee14ba3bb6b65341dbada924b18c46af2f0ef4dd8c077c588ffe
+[11:27:44.657] INFO (36852): Alice depositing match coin #1 (value=100)...
+[11:28:08.674] INFO (36852): Syncing wallet...
+[11:28:08.675] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:28:08.675] INFO (36852): Wallet sync complete after 1 emissions
+[11:28:08.679] INFO (36852): Alice depositing match coin #2 (value=100)...
+[11:28:32.791] INFO (36852): Syncing wallet...
+[11:28:32.793] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:28:32.793] INFO (36852): Wallet sync complete after 1 emissions
+[11:28:32.845] INFO (36852): Bob is betting a chip coin (value=100) on RED
+[11:28:56.934] INFO (36852): Claire is betting a chip coin (value=100) on BLACK
+[11:29:20.973] INFO (36852): Alice revealing the winning number...
+[11:30:02.441] INFO (36852): Syncing wallet...
+[11:30:02.442] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:30:02.442] INFO (36852): Wallet sync complete after 1 emissions
+[11:30:02.445] INFO (36852): Bob chip balance after claimMyBet: 100
+[11:30:02.459] INFO (36852): Bob claiming match with key=69b601c310697831359676448057e8855e3b5d7d1a39a30bda25f6c7d4711e00
+[11:30:26.526] INFO (36852): Syncing wallet...
+[11:30:26.527] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:30:26.527] INFO (36852): Wallet sync complete after 1 emissions
+[11:30:26.530] INFO (36852): Bob chip balance after claimMatch: 200
+[11:30:26.547] INFO (36852): Alice sweeping loser=7bd4a4c861d992a0144b772fb5e3e130828495df061b4b3dd287b1154f273619
+[11:30:50.628] INFO (36852): Syncing wallet...
+[11:30:50.630] INFO (36852): Wallet sync [1]: shielded=true, unshielded=true, dust=true
+[11:30:50.630] INFO (36852): Wallet sync complete after 1 emissions
+[11:30:50.633] INFO (36852): Alice chip balance after sweeping bet: 100
+[11:30:50.643] INFO (36852): Alice sweeping match=c0c51cad85e4200323742db107632a78c75262c4c7489c53ab3b3007ca6ede00
+ ✓ src/test/roulette.test.ts (12 tests) 345610ms
+   ✓ Roulette tutorial (RED/BLACK, 2x payouts, house match) (12)
+     ✓ Alice deploys the chips contract  19941ms
+     ✓ Alice mints chips to herself (2 for matches), Bob, and Claire  94983ms
+     ✓ Alice deploys the roulette contract bound to the chip color  18776ms
+     ✓ Alice deposits two match coins so the house can cover both bets  48142ms
+     ✓ Bob bets RED with a 100-chip coin  24089ms
+     ✓ Claire bets BLACK with a 100-chip coin  24087ms
+     ✓ Alice reveals the winning number (RED)  17403ms
+     ✓ Bob claims his bet back (phase 1: claimMyBet → 1x)  24078ms
+     ✓ Bob claims a match coin (phase 2: claimMatch → total 2x)  24086ms
+     ✓ Alice sweeps Claire's bet coin via houseClaimBet  24099ms
+     ✓ Alice sweeps the remaining unused match coin via houseClaimMatch  24091ms
+     ✓ Claire cannot claim — she bet BLACK but the winning color was RED 64ms
+```
 
 ---
 
