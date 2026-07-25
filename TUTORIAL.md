@@ -1,16 +1,16 @@
-# Building the Shielded Chips Roulette — a Compact tutorial
+# Shielded Chips Tutorial
 
 This tutorial walks you through writing the two Compact smart contracts at the
 heart of this example:
 
-1. **`chips.compact`** — a *shielded token* that the house mints and hands out to
-   players. The chip's value lives inside a zswap UTXO, so **how many chips
-   someone holds is private**.
-2. **`roulette.compact`** — a RED/BLACK betting game that takes chip coins as
+1. `chips.compact` — a shielded token that the house mints and hands out to
+   players. The chip's value lives inside a zswap UTXO, so how many chips
+   someone holds is private.
+2. `roulette.compact` — a RED/BLACK betting game that takes chip coins as
    bets and pays winners 2×.
 
 Everything else in the repo is already provided. The tutorial focuses on
-the **shielded-token operations** (minting, sending, receiving, and custodying
+the shielded-token operations (minting, sending, receiving, and custodying
 coins) and stays deliberately brief on the parts that aren't token-specific
 (enum plumbing, the roulette-wheel color table, identity hashing).
 
@@ -33,15 +33,14 @@ compose.yml        # local devnet (node + indexer + proof server)
 package.json       # `yarn compile`, `yarn validate`, etc.
 ```
 
-The **two things you write in this tutorial** are:
+The two things you write in this tutorial are:
 
 - `contract/chips.compact`
 - `contract/roulette.compact`
 
 and then you run `yarn compile`, which generates the missing
-`contract/managed/` directory (compiled circuits, proving/verifying keys, and
-the TypeScript type definitions the scaffolding imports). `contract/managed/`
-is gitignored — it is *always* a build artifact, never checked in.
+`contract/managed/` directory with compiled circuits, proving/verifying keys, and
+the TypeScript type definitions the scaffolding imports. 
 
 The mental model for the two contracts:
 
@@ -53,8 +52,8 @@ The mental model for the two contracts:
   (contract addr + domain sep)   ──────► winners get 2× back via sendShielded
 ```
 
-The roulette contract never mints chips. It only ever **receives**, **holds**,
-and **sends** chip coins that the chips contract created — which is exactly what
+The roulette contract never mints chips. It only ever receives, holds,
+and sends chip coins that the chips contract created — which is exactly what
 makes the shielded-token plumbing the interesting part.
 
 ---
@@ -84,13 +83,13 @@ witness localSecretKey(): Bytes<32>;
 
 Only two of these fields are about tokens, and they matter a lot later:
 
-- **`tokenColor`** — the 32-byte *color* (a.k.a. token type) of the chip. Every
+- `tokenColor` — the 32-byte color (a.k.a. token type) of the chip. Every
   shielded coin carries a `color` field, and a coin's color is derived
-  deterministically from **the minting contract's address + a domain
-  separator**. We record it here on the first mint so *other* contracts (the
+  deterministically from the minting contract's address + a domain
+  separator. We record it here on the first mint so other contracts (the
   roulette game) can read it off the public ledger and bind to it.
-- **`nonceSeed`** / **`nonceCounter`** — the machinery for producing a *fresh,
-  unpredictable nonce* for every coin we mint. More on why in §1.3.
+- `nonceSeed`/ `nonceCounter` — the machinery for producing a fresh,
+  unpredictable nonce for every coin we mint. More on why in §1.3.
 
 `theHouse` is a `sealed` ledger field (set once, in the constructor, never
 writable again) holding the deployer's identity. `localSecretKey` is a witness
@@ -157,7 +156,7 @@ export circuit mint(recipient: ZswapCoinPublicKey, amount: Uint<64>): ShieldedSe
     };
     const result = sendShielded(
         qualified,
-        left<ZswapCoinPublicKey, ContractAddress>(disclose(recipient)),
+        left<ZswapCoinPublicKey, ContractAddress>(disclose(recipient)), @TODO -- should this be ownPublicKey()
         disclose(amount) as Uint<128>
     );
 
@@ -177,19 +176,21 @@ const mintNonce = evolveNonce(idx, nonceSeed);
 nonceSeed = disclose(mintNonce);
 ```
 
-Every shielded coin is identified by a **nonce** — a unique 32-byte value that
+Every shielded coin is identified by a nonce — a unique 32-byte value that
 makes the coin's on-chain commitment unforgeable and un-linkable. If you ever
-minted two coins with the same nonce, they'd collide. So you need a *stream* of
+minted two coins with the same nonce, they'd collide. So you need a stream of
 distinct nonces.
 
 `evolveNonce(index: Uint<128>, nonce: Bytes<32>) -> Bytes<32>` is the standard
 library's nonce ratchet: give it the previous seed and a monotonically
 increasing index, and it deterministically produces the next nonce. Here we bump
 `nonceCounter`, feed the count in as the index, and roll `nonceSeed` forward so
-the *next* mint continues the chain. The result, `mintNonce`, is this coin's
+the next mint continues the chain. The result, `mintNonce`, is this coin's
 identity.
 
-#### (b) `mintShieldedToken` — creating the coin, color, and the "mint to self" pattern
+#### (b) `mintShieldedToken`
+
+Create the domain separator, feed it into the coin and mint to the contract:
 
 ```compact
 const domain = pad(32, "roulette:chip:");
@@ -216,7 +217,7 @@ Four things to internalise here:
 
 1. **The domain separator determines the color.** A shielded coin's `color` is
    derived from `(domainSep, this contract's address)`. Because both halves are
-   fixed for a given deployment, *every* chip this contract mints — regardless
+   fixed for a given deployment, every chip this contract mints — regardless
    of amount or recipient — shares the same color. That's what makes "chips" a
    single fungible token type. Change the domain string and you'd be minting a
    different token.
@@ -227,11 +228,13 @@ Four things to internalise here:
 
 3. **We mint to the contract itself, not to the recipient.** The recipient
    argument is `right<ZswapCoinPublicKey, ContractAddress>(kernel.self())`.
-   - `kernel.self()` is this contract's own address.
+   - `kernel.self()` is this contract's own address. This only resolves reliably
+     after the constructor executes, during constructor execution `kernel.self()`
+     resolves differently. It is usually only useful to call `kernel.self()` after
+     the constructor executes.
    - Recipients are an `Either<ZswapCoinPublicKey, ContractAddress>`: the
-     **`left`** arm is a user's wallet key; the **`right`** arm is a contract
-     address. So `right(kernel.self())` means "mint this coin into my own
-     custody."
+     `left` arm is a user's wallet key; the `right` arm is a contract
+     address. So `right(kernel.self())` means "mint this coin to the contract."
 
    Why mint to self instead of straight to the player? This is the "mint to
    self, then send" pattern. `mintShieldedToken` returns a brand-new
@@ -242,9 +245,9 @@ Four things to internalise here:
    `ShieldedSendResult` to return.
 
 4. **The value is private.** `amount` is disclosed to the mint operation (the
-   circuit needs it to build the coin), but it is **not** written to any public
+   circuit needs it to build the coin), but it is not written to any public
    ledger field. It lives inside the coin's zswap UTXO. On-chain observers see
-   that a mint happened and the coin's color, but **not how many chips** were
+   that a mint happened and the coin's color, but not how many chips were
    minted to whom.
 
 The returned `coin: ShieldedCoinInfo` has exactly three fields:
@@ -255,6 +258,7 @@ ShieldedCoinInfo = { nonce: Bytes<32>, color: Bytes<32>, value: Uint<128> }
 
 #### (c) Recording the color on first mint
 
+@TODO -- default returns to all zeroes, which is the color of the NIGHT token. Fix this.
 ```compact
 if (tokenColor == default<Bytes<32>>) {
     tokenColor = disclose(coin.color);
@@ -266,8 +270,9 @@ The first time we mint, `tokenColor` is still its zero default, so we stash
 contract can look it up and enforce "bets must be paid in chips." The color is
 not secret — publishing it is intentional and safe.
 
-#### (d) `sendShielded` — paying the coin out, and change
+#### (d) `sendShielded`
 
+Pay out the coin to the minter:
 ```compact
 const qualified = QualifiedShieldedCoinInfo {
     nonce: coin.nonce,
@@ -282,7 +287,7 @@ const result = sendShielded(
 );
 ```
 
-`sendShielded` **spends** a coin the contract owns and pays some value to a
+`sendShielded` spends a coin the contract owns and pays some value to a
 recipient:
 
 ```
@@ -299,7 +304,7 @@ Two shielded-specific details:
   spend a *qualified* coin — one that also carries an `mt_index` (its position in
   the zswap commitment Merkle tree). The coin we just minted is a plain
   `ShieldedCoinInfo`, so we wrap it, copying `nonce`/`color`/`value` straight
-  across and setting **`mt_index: 0`**. `0` is correct here because the coin was
+  across and setting `mt_index: 0`. `0` is correct here because the coin was
   created in this same transaction — it has no prior committed position in the
   tree yet.
 
@@ -339,7 +344,7 @@ circuit getDappPublicKey(_secret: Bytes<32>): Bytes<32> {
 
 Not token-specific: it hashes the caller's secret behind a `"roulette:pk:"`
 domain prefix to produce a stable, cross-dapp-unlinkable pseudonym. The roulette
-contract uses the **identical** derivation so a player has the same identity in
+contract uses the identical derivation so a player has the same identity in
 both contracts.
 
 That's the entire chips contract.
@@ -348,10 +353,16 @@ That's the entire chips contract.
 
 ## Part 2 — `roulette.compact`: a game that custodies chip coins
 
-Create `contract/roulette.compact`. The roulette contract is longer, but most of
+Create `roulette.compact`:  
+
+```bash
+touch `contract/roulette.compact`
+```
+
+The roulette contract is longer, but most of
 its length is game logic (assertions, the wheel, commit/reveal of the winning
-number). We'll move quickly through those and slow down every time a **chip coin
-moves**.
+number). The tutorial moves quickly through those and slow down every time a chip coin
+moves.
 
 ### 2.1 Header, enums, ledger state
 
@@ -376,22 +387,24 @@ export ledger houseCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
 witness localSecretKey(): Bytes<32>;
 ```
 
-The two ledger fields that matter for tokens are the **coin maps**:
+The two ledger fields that matter for tokens are the coin maps:
 
-- **`betCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>`** — each player's bet
+- `betCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>` — each player's bet
   chip, held in escrow by the contract, keyed by the player's pseudonym.
-- **`houseCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>`** — the house's
+- `houseCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>` — the house's
   pre-deposited "match" coins used to pay the 2× winnings, keyed by each coin's
   nonce.
 
-Storing `QualifiedShieldedCoinInfo` *in ledger state* is how a contract keeps
+Storing `QualifiedShieldedCoinInfo` in ledger state is how a contract keeps
 custody of a coin between transactions: it received the coin earlier, and it
 remembers the qualified handle so it can `sendShielded` that exact coin later.
 
 `chipColor` is `sealed` and bound at deploy time — this is the color the game
 will accept, read straight from the chips contract's `tokenColor`.
 
-### 2.2 Constructor: bind the chip color, commit the winning number
+### 2.2 Constructor
+
+Bind the chip color and commit to the winning number:
 
 ```compact
 constructor(_winningNum: Uint<8>, allowedChipColor: Bytes<32>) {
@@ -410,7 +423,7 @@ accepts coins of that color. The winning number is stored as a *commitment*
 (`commitWithSk` hashes it with the house secret) and revealed later — standard
 commit/reveal, not token-specific.
 
-### 2.3 `houseDeposit` — a contract *receiving* and custodying a coin
+### 2.3 `houseDeposit` — a contract receiving and custodying a coin
 
 Before any bets pay out, the house parks matching coins in the contract:
 
@@ -429,20 +442,20 @@ export circuit houseDeposit(coin: ShieldedCoinInfo): [] {
 }
 ```
 
-This is the **receive** side of shielded tokens, and it's a two-step handshake:
+This is the receive side of shielded tokens, and it's a two-step handshake:
 
-1. **`receiveShielded(coin)`** accepts an incoming coin into the contract's
-   custody. A shielded coin sent *to a contract address* is not automatically
-   "spendable by the contract" — the receiving contract must explicitly call
+1. `receiveShielded(coin)` accepts an incoming coin into the contract's
+   custody. A shielded coin sent to a contract address is not automatically
+   spendable by the contract — the receiving contract must explicitly call
    `receiveShielded` to take it into its zswap state. Without this call the coin
    would be effectively stranded.
 
    The coin comes in as a plain `ShieldedCoinInfo` (the caller's wallet built it
    as an input to this transaction). Note the guard `coin.color == chipColor`:
-   the contract refuses anything that isn't a chip.
+   the contract refuses anything that isn't a roulette chip.
 
-2. **`houseCoins.insertCoin(key, coin, owner)`** records the coin in ledger map
-   state so the contract can find and spend it in a *later* transaction.
+2. `houseCoins.insertCoin(key, coin, owner)` records the coin in ledger map
+   state so the contract can find and spend it in a later transaction.
    `insertCoin` is a ledger-`Map` method specific to coin storage: it takes the
    received `ShieldedCoinInfo` and stores it as a `QualifiedShieldedCoinInfo`
    (the qualified form carries the `mt_index` needed to spend it later),
@@ -450,8 +463,8 @@ This is the **receive** side of shielded tokens, and it's a two-step handshake:
    it by the coin's own `nonce`, which is guaranteed unique, so no separate
    deposit counter is needed.
 
-Together: `receiveShielded` takes the coin into custody *now*; `insertCoin`
-persists a spendable handle for *later*. Every coin the roulette contract holds
+Together: `receiveShielded` takes the coin into custody now; `insertCoin`
+persists a spendable handle for later. Every coin the roulette contract holds
 goes through this exact pair.
 
 > The author left a `@TODO` on the `disclose(coin)` here, musing that disclosing
@@ -459,7 +472,9 @@ goes through this exact pair.
 > ledger — the value stays in the UTXO — but the `disclose` is still required
 > because the coin flows into a public ledger effect (see §1.3(e)).
 
-### 2.4 `betColor` — a player sending a coin into escrow
+### 2.4 `betColor`
+
+A player sends a coin into the escrow of the contract and places a bet:
 
 ```compact
 export circuit betColor(coin: ShieldedCoinInfo, colorBet: Color): [] {
@@ -484,22 +499,23 @@ export circuit betColor(coin: ShieldedCoinInfo, colorBet: Color): [] {
 }
 ```
 
-The coin handling is **exactly the same receive+insert pair** as `houseDeposit`
-— that's the reusable shape for "a contract takes custody of a chip." The only
-differences are the guards and bookkeeping (brief):
+The coin handling is exactly the same receive+insert pair as `houseDeposit`
+— that's the reusable shape for a contract that takes custody of a shielded coin. The only
+differences are the guards and bookkeeping:
 
 - keyed by the player's pseudonym `pubPlayer` instead of the coin nonce, so a
   player can bet at most once per round;
 - the same `coin.color == chipColor` check;
 - the chosen color is recorded publicly in `bets`.
 
-Privacy note *(not token-specific but worth stating once)*: the player's
-*wallet* identity stays private — only the pseudonym `pubPlayer` and the bet
-color become public. The bet *value*, however, is `betCoins[pubPlayer].value`
-and **is** publicly readable. This example is deliberately "identity-private,
+Privacy note: the player's wallet identity stays private — only the pseudonym `pubPlayer` and the bet
+color become public. The bet value, however, is `betCoins[pubPlayer].value`
+and is publicly readable. This example is deliberately "identity-private,
 behaviour-public."
 
 ### 2.5 `revealWinningNumber`
+
+Bets are in and `theHouse` can now spin the wheel and reveal the winningNumber:
 
 ```compact
 export circuit revealWinningNumber(winningNum: Uint<8>): [] {
@@ -513,13 +529,13 @@ export circuit revealWinningNumber(winningNum: Uint<8>): [] {
 ```
 
 No tokens move. The house re-hashes the number and checks it against the
-commitment made at deploy time (so it can't change the outcome after seeing the
-bets), closes betting, and publishes the winning color.
+commitment made at deploy time so it can't change the outcome after seeing the
+bets, closes betting, and publishes the winning color.
 
 ### 2.6 Paying a winner: two `sendShielded` calls, and why it's split
 
-A winner gets **2×**: their own stake back, plus a matching coin from the house.
-Crucially this is done in **two separate circuits**, not one:
+A winner gets 2× their own stake back, because of a matching coin from `theHouse`.
+Crucially this is done in two separate circuits, not one:
 
 ```compact
 // Phase 1: return the player's own bet coin.
@@ -541,8 +557,11 @@ export circuit claimMyBet(): [] {
 }
 ```
 
+`ownPublicKey` is safe to use here, because the caller of this circuit has already been authenticated. @TODO -- add a link here to the security section.
+
+Send one fo the house's match coins of equal value:
+
 ```compact
-// Phase 2: send one of the house's match coins of equal value.
 export circuit claimMatch(matchKey: Bytes<32>): [] {
     const _sk = localSecretKey();
     const player = disclose(getDappPublicKey(_sk));
@@ -576,17 +595,17 @@ Here's what's shielded-token-important:
 
 - **`ownPublicKey()` as the recipient.** The payout goes to
   `left(ownPublicKey())` — `ownPublicKey()` returns the transaction author's
-  `ZswapCoinPublicKey`, i.e. the real wallet calling the circuit. This is a
-  subtle privacy point: the player's on-chain *pseudonym* is unlinkable to their
+  `ZswapCoinPublicKey`, i.e. the real wallet calling the circuit as a witness function. This is a
+  subtle privacy point: the player's on-chain pseudonym is unlinkable to their
   wallet, but a payout must land in an actual wallet key, so the coin does go to
   a concrete `ZswapCoinPublicKey`. `ownPublicKey()` is safe to use here, because
   the caller has already been authenticated.
 
-- **The value equality is enforced *in-circuit*.** Phase 2 asserts
+- **The value equality is enforced in-circuit.** Phase 2 asserts
   `matchCoin.value == betCoin.value` by reading both values from public ledger
   state. That's what mechanically guarantees the 2× is exactly 2× — no
   off-chain trust between the house and the player. This is also why
-  `claimMyBet` deliberately **does not** remove `betCoins[player]`: `claimMatch`
+  `claimMyBet` deliberately does not remove `betCoins[player]`: `claimMatch`
   still needs the bet coin's value for this check, and only removes it
   afterward.
 
@@ -597,9 +616,9 @@ Here's what's shielded-token-important:
   payout is split into two transactions. This is a real, practical constraint
   worth remembering whenever you move more than a couple of coins per circuit.
 
-### 2.7 House sweeps: same send pattern
+### 2.7 House sweeps losers
 
-Losers never claim, so the house reclaims the stranded coins:
+Losers are not allowed to claim, so the house reclaims the stranded coins:
 
 ```compact
 export circuit houseClaimBet(loserPseudonym: Bytes<32>): [] {
@@ -645,7 +664,7 @@ circuit commitWithSk(_winningNum: Bytes<32>, _sk: Bytes<32>): Bytes<32> {
 }
 ```
 
-Pure helper circuits: the standard single-zero roulette color table, the shared
+Pure helper circuits: the standard single-zero roulette color table (single zero is back!), the shared
 pseudonym derivation (identical to the chips contract), and the winning-number
 commitment. Copy `getOdd` in full from the reference source — it's just the list
 of RED pockets `1,3,5,…,35`.
@@ -661,6 +680,7 @@ yarn compile
 ```
 
 Successful output:
+
 ```
 Compiling 7 circuits:
   circuit "betColor" (k=15, rows=16583)  
@@ -688,20 +708,23 @@ RED (wins) and Claire bets BLACK (loses), Alice reveals RED, Bob claims 2× in
 two phases, and Alice sweeps the leftovers.
 
 Be sure that the Docker engine is running and start the local devnet:
+
 ```bash
 yarn env:up
 ```
 
 Run the test script:
+
 ```bash
 yarn test:local
 ```
 
-Watch the log lines like *"Bob chip balance after claimMatch: 200"* — that `100
-→ 200` is the private chip value moving through the `sendShielded` calls you
+Watch the log lines like "Bob chip balance after claimMatch: 200" — that `100→ 200` 
+is the private chip value moving through the `sendShielded` calls you
 wrote in Part 2, and never appearing on the public ledger.
 
 Successful output looks like this:
+
 ```
 [11:25:30.951] INFO (36852): Wallet sync [27]: shielded=true, unshielded=true, dust=true
 [11:25:30.951] INFO (36852): Wallet sync complete after 27 emissions
@@ -778,11 +801,11 @@ Successful output looks like this:
 | Store a coin in a ledger `Map` | `map.insertCoin(key, coin, owner)` | `ShieldedCoinInfo` | (stored `QualifiedShieldedCoinInfo`) |
 | Spend a coin | `sendShielded(qualified, recipient, value:Uint<128>)` | `QualifiedShieldedCoinInfo` | `ShieldedSendResult` |
 | This contract's address | `kernel.self()` → wrap with `right(...)` | | |
-| Caller's wallet key | `ownPublicKey()` → wrap with `left(...)` | | |
+| Caller's wallet key(witness) | `ownPublicKey()` → wrap with `left(...)` | | |
 
 Key type reminders:
 
-- `ShieldedCoinInfo = { nonce, color, value }` — a coin created *this*
+- `ShieldedCoinInfo = { nonce, color, value }` — a coin created this
   transaction.
 - `QualifiedShieldedCoinInfo = { nonce, color, value, mt_index }` — a coin
   already committed to the ledger, spendable. Use `mt_index: 0` only for a coin
@@ -790,5 +813,8 @@ Key type reminders:
 - `ShieldedSendResult = { change: Maybe<ShieldedCoinInfo>, sent: ShieldedCoinInfo }`.
 - Recipients are `Either<ZswapCoinPublicKey, ContractAddress>`: `left` = wallet
   key, `right` = contract address.
-- Coin **values are never written to public ledger state** — that privacy is the
+- Coin values are never written to public ledger state — that privacy is the
   whole reason to use shielded tokens.
+
+## Next Steps
+@TODO -- fill in next steps here
