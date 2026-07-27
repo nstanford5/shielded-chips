@@ -16,7 +16,30 @@ coins) and stays deliberately brief on the parts that aren't token-specific
 
 ---
 
+## Prerequisites
+
+Before you begin this tutorial, ensure you have:
+
+- [Installed the toolchain](https://docs.midnight.network/getting-started/installation)
+- A Compact compiler that supports `pragma language_version 0.23` — run
+  `compact check` to see what you have, and `compact update` to get the latest
+- Node.js v22+
+- Docker, with the engine running — `compose.yml` provides the local devnet
+- Completed a beginner tutorial (optional)
+
+You do **not** need to start a proof server yourself. `yarn env:up` brings up
+the node, the indexer, and a proof server together, and `src/config.ts` already
+points at them.
+
+---
+
 ## 0. What you start with, and what you'll build
+
+Clone the starter repository:
+
+```bash
+git clone git@github.com:nstanford5/shielded-chips.git
+```
 
 After cloning, you already have the full TypeScript scaffolding:
 
