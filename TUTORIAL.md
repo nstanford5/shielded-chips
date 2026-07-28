@@ -112,12 +112,12 @@ Only two of these fields are about tokens, and they matter a lot later:
   separator. We record it here on the first mint so other contracts (the
   roulette game) can read it off the public ledger and bind to it.
 - `nonceSeed`/ `nonceCounter` — the machinery for producing a fresh,
-  unpredictable nonce for every coin we mint. More on why in §1.3.
+  unpredictable nonce for every coin mint. More on why in §1.3.
 
 `theHouse` is a `sealed` ledger field (set once, in the constructor, never
 writable again) holding the deployer's identity. `localSecretKey` is a witness
-— a private input supplied off-chain by the caller's wallet — used to derive
-that identity.
+function that returns a private input supplied off-chain by the caller's wallet — 
+used to derive that identity.
 
 ### 1.2 Constructor: house identity + nonce seed
 
@@ -281,7 +281,6 @@ ShieldedCoinInfo = { nonce: Bytes<32>, color: Bytes<32>, value: Uint<128> }
 
 #### (c) Recording the color on first mint
 
-@TODO -- default returns to all zeroes, which is the color of the NIGHT token. Fix this.
 ```compact
 if (tokenColor == default<Bytes<32>>) {
     tokenColor = disclose(coin.color);
@@ -400,7 +399,7 @@ export sealed ledger theHouse: Bytes<32>;
 export sealed ledger chipColor: Bytes<32>;
 export sealed ledger winningNumHash: Bytes<32>;
 export ledger betState: BetState;
-export ledger color: Color;
+export ledger winningColor: Color;
 export ledger bets: Map<Bytes<32>, Color>;
 export ledger betCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
 export ledger winnerList: Set<Bytes<32>>;
@@ -547,7 +546,7 @@ export circuit revealWinningNumber(winningNum: Uint<8>): [] {
     const hash = commitWithSk(winningNum as Bytes<32>, _sk);
     assert(hash == winningNumHash, "Cheat Detected: theHouse: tried to change the winning number");
     betState = BetState.CLOSED;
-    color = getColor(disclose(winningNum));
+    winningColor = getColor(disclose(winningNum));
 }
 ```
 
@@ -567,7 +566,7 @@ export circuit claimMyBet(): [] {
     const _sk = localSecretKey();
     const player = disclose(getDappPublicKey(_sk));
     assert(bets.member(player), "You did not place a bet");
-    assert(bets.lookup(player) == color, "You did not place a winning bet");
+    assert(bets.lookup(player) == winningColor, "You did not place a winning bet");
     assert(!winnerList.member(player), "Already claimed bet");
 
     const coin = betCoins.lookup(player);
@@ -649,7 +648,7 @@ export circuit houseClaimBet(loserPseudonym: Bytes<32>): [] {
     const _sk = localSecretKey();
     assert(getDappPublicKey(_sk) == theHouse, "Only the house can sweep");
     assert(bets.member(disclose(loserPseudonym)), "That player did not place a bet");
-    assert(bets.lookup(disclose(loserPseudonym)) != color, "That player won");
+    assert(bets.lookup(disclose(loserPseudonym)) != winningColor, "That player won");
     assert(betCoins.member(disclose(loserPseudonym)), "No bet coin to sweep");
 
     const coin = betCoins.lookup(disclose(loserPseudonym));

@@ -62,7 +62,7 @@ export sealed ledger theHouse: Bytes<32>;
 export sealed ledger chipColor: Bytes<32>;
 export sealed ledger winningNumHash: Bytes<32>;
 export ledger betState: BetState;
-export ledger color: Color;
+export ledger winningColor: Color;
 export ledger bets: Map<Bytes<32>, Color>;
 // Player's chip coin, awaiting payout (or sweep on loss).
 export ledger betCoins: Map<Bytes<32>, QualifiedShieldedCoinInfo>;
@@ -132,7 +132,7 @@ export circuit revealWinningNumber(winningNum: Uint<8>): [] {
     assert(hash == winningNumHash, "Cheat Detected: theHouse: tried to change the winning number");
 
     betState = BetState.CLOSED;
-    color = getColor(disclose(winningNum));
+    winningColor = getColor(disclose(winningNum));
 }
 
 // Phase 1 of a winning claim: send the player's bet coin back.
@@ -146,7 +146,7 @@ export circuit claimMyBet(): [] {
     const player = disclose(getDappPublicKey(_sk));
 
     assert(bets.member(player), "You did not place a bet");
-    assert(bets.lookup(player) == color, "You did not place a winning bet");
+    assert(bets.lookup(player) == winningColor, "You did not place a winning bet");
     assert(!winnerList.member(player), "Already claimed bet");
 
     const coin = betCoins.lookup(player);
@@ -190,7 +190,7 @@ export circuit houseClaimBet(loserPseudonym: Bytes<32>): [] {
     assert(getDappPublicKey(_sk) == theHouse, "Only the house can sweep");
 
     assert(bets.member(disclose(loserPseudonym)), "That player did not place a bet");
-    assert(bets.lookup(disclose(loserPseudonym)) != color, "That player won");
+    assert(bets.lookup(disclose(loserPseudonym)) != winningColor, "That player won");
     assert(betCoins.member(disclose(loserPseudonym)), "No bet coin to sweep");
 
     const coin = betCoins.lookup(disclose(loserPseudonym));

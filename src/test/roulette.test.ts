@@ -122,7 +122,7 @@ describe('Roulette tutorial (RED/BLACK, 2x payouts, house match)', () => {
     async function findLoserPseudonym(): Promise<Uint8Array> {
         const state = await queryRoulette();
         for (const [pseudo, bet] of state.bets) {
-            if (bet !== state.color) return pseudo;
+            if (bet !== state.winningColor) return pseudo;
         }
         throw new Error('No losing bet found');
     }
@@ -361,7 +361,7 @@ describe('Roulette tutorial (RED/BLACK, 2x payouts, house match)', () => {
 
         const state = await queryRoulette();
         expect(state.betState).toEqual(BetState.CLOSED);
-        expect(state.color).toEqual(Color.RED);
+        expect(state.winningColor).toEqual(Color.RED);
     });
 
     it('Bob claims his bet back (phase 1: claimMyBet → 1x)', async () => {
