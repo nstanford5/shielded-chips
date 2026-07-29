@@ -8,14 +8,25 @@ import { type NetworkConfig } from './config.js';
 
 // All circuits we call across both contracts in this tutorial.
 export type RouletteCircuits =
+  // roulette.compact
   | 'betColor'
   | 'revealWinningNumber'
-  | 'claimMyBet'
-  | 'claimMatch'
+  | 'claimWinnings'
+  | 'forfeit'
   | 'houseDeposit'
-  | 'houseClaimBet'
   | 'houseClaimMatch'
-  | 'mint';
+  // chips.compact — MIP-0011 native shielded token
+  | 'mint'
+  | 'burn'
+  | 'burnFromTreasury'
+  | 'mintToTreasury'
+  | 'name'
+  | 'symbol'
+  | 'decimals'
+  | 'tokenColor'
+  | 'totalMinted'
+  | 'totalBurned'
+  | 'totalSupply';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type RouletteProviders = MidnightProviders<any>;
