@@ -350,6 +350,11 @@ would hand over mint authority.
   several generations of derivation, recompute the commitment and search the
   chain. It found the original bug, then caught the incomplete fix, then confirmed
   the real one. Keeping it runnable is worth more than a comment claiming privacy.
+- **The regression is now in-repo.** `src/test/privacy.test.ts` captures each
+  round's secret nonces (escrowed bet coin, payout coin) and the player's wallet
+  key and asserts none of them appear in either contract's public ledger state —
+  the "write the attack, keep it runnable" principle wired into `yarn test`, so a
+  future change that reintroduces a §2-class leak fails a test instead of shipping.
 - **Cheap negative controls make results trustworthy.** Testing all three
   candidate wallets against every coin meant a hit was meaningful: the two wrong
   candidates reliably missed. A single-candidate test would have proved much less.
